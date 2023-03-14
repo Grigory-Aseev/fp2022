@@ -486,9 +486,9 @@ let run input =
   | Error e -> Format.printf "(Error while parsing): %s" e
 ;;
 
-(* Tests for interpretator *)
+(** Tests for interpretator *)
 
-(*  1 + 2 + 3 + 4 * 5 + 6 / 3 + (10 - 5) / 5  *)
+(**  1 + 2 + 3 + 4 * 5 + 6 / 3 + (10 - 5) / 5  *)
 let test =
   [ EBinOp
       ( Add
@@ -510,7 +510,7 @@ let%test _ =
   | _ -> false
 ;;
 
-(*  [let sum x y = x + y; sum (sum 700 70) 7]  *)
+(**  [let sum x y = x + y; sum (sum 700 70) 7]  *)
 let test =
   [ ELet
       ( false
@@ -528,7 +528,7 @@ let%test _ =
   | _ -> false
 ;;
 
-(*  fibonacci 20  *)
+(**  fibonacci 20  *)
 
 let test =
   [ ELet
@@ -554,7 +554,7 @@ let%test _ =
   | _ -> false
 ;;
 
-(*  factorial 20  *)
+(**  factorial 20  *)
 
 let test =
   [ ELet
@@ -585,9 +585,9 @@ let%test _ =
   | _ -> false
 ;;
 
-(*  Active patterns tests  *)
+(**  Active patterns tests  *)
 
-(*  let (|Even|Odd|) input = if input % 2 = 0 then Even else Odd  *)
+(**  let (|Even|Odd|) input = if input % 2 = 0 then Even else Odd  *)
 let test_for_multy_pat =
   [ ELet
       ( false
@@ -627,7 +627,7 @@ let%test _ =
   | _ -> false
 ;;
 
-(*  let (|Default|) onNone value =
+(**  let (|Default|) onNone value =
     match value with
     | None -> onNone
     | Some e -> e  *)
@@ -674,7 +674,7 @@ let%test _ =
   | _ -> false
 ;;
 
-(*  let (| Foo|_|) s x = if x = s then Some Foo else None  *)
+(**  let (| Foo|_|) s x = if x = s then Some Foo else None  *)
 let test_apat_with_args_opt =
   [ ELet
       ( false
@@ -752,7 +752,7 @@ let%test _ =
   | _ -> false
 ;;
 
-(*  Error tests  *)
+(**  Error tests  *)
 let test = [ EBinOp (Div, EConst (CInt 777), EConst (CInt 0)) ]
 
 let%test _ =

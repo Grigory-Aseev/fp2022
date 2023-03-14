@@ -77,12 +77,13 @@ let parrow = str_token "->"
 let pbinding = str_token "let"
 let pwild = str_token "_"
 
-(*  Const constructors  *)
+(**  Const constructors  *)
 let constr_cint n = CInt n
+
 let constr_cbool b = CBool b
 let constr_cstring s = CString s
 
-(*  Const parsers  *)
+(**  Const parsers  *)
 let pcint =
   let ps = token (option "" (str_token "-" <|> str_token "+")) in
   let pd = take_while1 is_digit in
@@ -103,7 +104,7 @@ let pcnil = pbrackets @@ (str_token "" *> return CNil)
 let pcunit = pparens @@ (str_token "" *> return CUnit)
 let pconst = token (choice [ pcint; pcbool; pcstring; pcnil; pcunit ])
 
-(*  Identifier parsers  *)
+(**  Identifier parsers  *)
 let ident is_good_entry =
   let pchar = satisfy is_id_char in
   empty *> satisfy is_good_entry
@@ -132,7 +133,7 @@ let pident_constr =
   ident is_constr_entry
 ;;
 
-(*  Pattern constructors  *)
+(**  Pattern constructors  *)
 
 let constr_pwild _ = PWild
 let constr_pconst c = PConst c
@@ -146,7 +147,7 @@ let constr_ptuple pats = PTuple pats
 let constr_plist pats = PList pats
 let constr_pacase id pats = PACase (id, pats)
 
-(*  Pattern parsers  *)
+(**  Pattern parsers  *)
 
 let ppwild = constr_pwild <$> pwild
 let ppconst = constr_pconst <$> pconst
@@ -246,10 +247,10 @@ let pargs =
     ]
 ;;
 
-(*  Operation constructor  *)
+(**  Operation constructor  *)
 let ebinop binary_op expr1 expr2 = EBinOp (binary_op, expr1, expr2)
 
-(*  Operation parsers  *)
+(**  Operation parsers  *)
 
 let pop ch op = str_token ch *> return (ebinop op)
 let pmulti = choice [ pop "*" Mul; pop "/" Div; pop "%" Mod ]
@@ -260,7 +261,7 @@ let peq = pop "=" Eq <|> pop "<>" Neq
 let pconj = pop "&&" And
 let pdisj = pop "||" Or
 
-(*  Expr constructors  *)
+(**  Expr constructors  *)
 
 let constr_econst e = EConst e
 let constr_ebinop op e1 e2 = EBinOp (op, e1, e2)
@@ -278,7 +279,7 @@ let constr_case pat expr = pat, expr
 let constr_single_pat is_option constr = FAPattern (SingleChoice (is_option, constr))
 let constr_multy_pat constrs = FAPattern (MultipleChoice constrs)
 
-(* Expr parsers  *)
+(** Expr parsers  *)
 
 type edispatch =
   { evar : edispatch -> expr t
@@ -574,11 +575,12 @@ let pack =
 
 let expr = pack.expr pack
 
-(*  Program parser  *)
+(**  Program parser  *)
 let pprogram = many1 (token expr <* token (many1 (str_token ";;")))
+
 let parse str = parse_str pprogram (String.strip str)
 
-(*  TESTS  *)
+(**  TESTS  *)
 
 let show_parsed_result str parser show =
   match parse_str parser str with
@@ -586,7 +588,7 @@ let show_parsed_result str parser show =
   | Error e -> Format.printf "%s" e
 ;;
 
-(*  Consts tests  *)
+(**  Consts tests  *)
 
 let%expect_test _ =
   show_parsed_result "777" pconst show_const;
@@ -623,7 +625,7 @@ let%expect_test _ =
   [%expect {| CUnit |}]
 ;;
 
-(*  Pattern tests  *)
+(**  Pattern tests  *)
 
 let%expect_test _ =
   show_parsed_result "777" pattern show_pattern;
@@ -788,9 +790,9 @@ let%expect_test _ =
     (PTuple [(PConst (CInt 1)); (PList [(PConst (CInt 1))])]) |}]
 ;;
 
-(*  Expression tests  *)
+(**  Expression tests  *)
 
-(*  Binary operations  *)
+(**  Binary operations  *)
 
 let%expect_test _ =
   show_parsed_result "x + 1" expr show_expr;
@@ -920,7 +922,7 @@ let%expect_test _ =
        (EBinOp (Cons, (EVar "b"), (EBinOp (Cons, (EVar "c"), (EVar "tl"))))))) |}]
 ;;
 
-(*  Lists  *)
+(**  Lists  *)
 
 let%expect_test _ =
   show_parsed_result "[a; b; c; d]" expr show_expr;
@@ -958,7 +960,7 @@ let%expect_test _ =
          ]) |}]
 ;;
 
-(*  Tuples *)
+(**  Tuples *)
 
 let%expect_test _ =
   show_parsed_result "(1 + x, [2; 4 + x], 3)" expr show_expr;
@@ -977,7 +979,7 @@ let%expect_test _ =
     : end_of_input |}]
 ;;
 
-(*  Conditions  *)
+(**  Conditions  *)
 
 let%expect_test _ =
   show_parsed_result "if true then 1 else 2" expr show_expr;
@@ -1000,7 +1002,8 @@ let%expect_test _ =
        )) |}]
 ;;
 
-(*  Lambda functions  *)
+(**  Lambda functions  *)
+
 let%expect_test _ =
   show_parsed_result "fun x -> x" expr show_expr;
   [%expect {|
@@ -1032,7 +1035,7 @@ let%expect_test _ =
        )) |}]
 ;;
 
-(*  Applications  *)
+(**  Applications  *)
 
 let%expect_test _ =
   show_parsed_result "f x" expr show_expr;
@@ -1070,7 +1073,7 @@ let%expect_test _ =
        (EVar "z"))) |}]
 ;;
 
-(*  Pattern matching  *)
+(**  Pattern matching  *)
 
 let%expect_test _ =
   show_parsed_result "match 2 with | 1 -> 1 | _ -> 5" expr show_expr;
@@ -1090,7 +1093,7 @@ let%expect_test _ =
        )) |}]
 ;;
 
-(*  Active patterns application  *)
+(**  Active patterns application  *)
 
 let%expect_test _ =
   show_parsed_result "Some x" expr show_expr;
@@ -1123,7 +1126,7 @@ let%expect_test _ =
     (EAPattern ("Default", [(EConst (CString "random citizen")); (EVar "name")])) |}]
 ;;
 
-(*  Let and let rec  *)
+(**  Let and let rec  *)
 
 let%expect_test _ =
   show_parsed_result "let f x = x" expr show_expr;
@@ -1226,7 +1229,7 @@ let%expect_test _ =
        )) |}]
 ;;
 
-(*  Let in and let rec in  *)
+(**  Let in and let rec in  *)
 
 let%expect_test _ =
   show_parsed_result "let sum x = fun y -> x + y in sum 10 5" expr show_expr;
@@ -1262,7 +1265,7 @@ let%expect_test _ =
        (EApp ((EVar "fact"), (EConst (CInt 10)))))) |}]
 ;;
 
-(*  Active pattern declaration  *)
+(**  Active pattern declaration  *)
 
 let%expect_test _ =
   show_parsed_result

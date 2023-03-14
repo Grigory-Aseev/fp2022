@@ -2,7 +2,6 @@
 
 (** SPDX-License-Identifier: LGPL-3.0-or-later *)
 
-(* open FSharpActivePatterns_lib.Parser *)
 open FSharpActivePatterns_lib.Interpret
 
 let () = run (Stdio.In_channel.input_all Caml.stdin)
