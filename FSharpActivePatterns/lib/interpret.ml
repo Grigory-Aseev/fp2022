@@ -52,15 +52,18 @@ let is_constr = function
 type environment = (id, value, String.comparator_witness) Map.t
 
 type interpret_error =
-  | Division_by_zero
+  | Division_by_zero (**  occurs when dividing an integer by zero  *)
   | UnboundValue of string
+      (**  occurs when a variable name is called, but there is no existing binding  *)
   | UnboundConstructor of string
+      (**  occurs when the name of the active pattern is called which has not been declared  *)
   | FunctionCompare
-  | MatchFailure
-  | InadmissibilityOfActivePattern
-  | UnexpectedWildcard
+      (**  occurs when comparing expressions in which there are functions  *)
+  | MatchFailure (**  occurs if the case is not matched  *)
   | EmptyProgram
-  | Unreachable
+      (**  occurs when an empty program (an empty list of expressions) is input  *)
+  | TypeError (**  occurs when there is a mismatch of types  *)
+  | Unreachable (**  should not occur  *)
 
 let pp_interpret_error fmt = function
   | Division_by_zero -> Format.fprintf fmt "Exception: Division_by_zero."
@@ -70,11 +73,8 @@ let pp_interpret_error fmt = function
     Format.fprintf fmt "Exception: Invalid_argument \"compare: functional value\""
   | MatchFailure ->
     Format.fprintf fmt "Exception: this pattern-matching is not exhaustive."
-  | InadmissibilityOfActivePattern ->
-    Format.fprintf fmt "Error: this active recognizer is not allowed here"
-  | UnexpectedWildcard ->
-    Format.fprintf fmt "Error: wildcard is not expected to be found in this place"
   | EmptyProgram -> Format.fprintf fmt "Error: the program was not provided or was empty"
+  | TypeError -> Format.fprintf fmt "Error: type mismatch, a different type was expected"
   | Unreachable ->
     Format.fprintf fmt "Error: Unreachable error... Something went wrong..."
 ;;
@@ -150,8 +150,7 @@ end = struct
               | VFun _ :: _ -> true
               | VTuple l :: tl | VList l :: tl -> is_fun_in_vlist l || is_fun_in_vlist tl
               | VSome v :: tl -> is_fun_in_vlist [ v ] || is_fun_in_vlist tl
-              | _ :: [] -> false
-              | h :: tl -> is_fun_in_vlist [ h ] || is_fun_in_vlist tl
+              | _ :: tl -> is_fun_in_vlist tl
             in
             let rec eval_cmp op = function
               | VBool bl, VBool br ->
@@ -164,13 +163,13 @@ end = struct
                 let* cmp = compute_cmp_op op in
                 return @@ constr_vbool (cmp sl sr)
               | VList ll, VList lr ->
-                if is_fun_in_vlist (ll @ lr)
+                if is_fun_in_vlist ll || is_fun_in_vlist lr
                 then fail FunctionCompare
                 else
                   let* cmp = compute_cmp_op op in
                   return @@ constr_vbool (cmp ll lr)
               | VTuple tl, VTuple tr ->
-                if is_fun_in_vlist (tl @ tr)
+                if is_fun_in_vlist tl || is_fun_in_vlist tr
                 then fail FunctionCompare
                 else
                   let* cmp = compute_cmp_op op in
@@ -200,7 +199,7 @@ end = struct
        | VBool b ->
          let e = if b then e_then else e_else in
          eval e env
-       | _ -> fail Unreachable)
+       | _ -> fail TypeError)
     | EFun (pat, expr) -> return @@ constr_vfun pat expr (Map.to_alist env)
     | EApp (func, arg) ->
       let* fun_to_apply = eval func env in
@@ -220,7 +219,7 @@ end = struct
                  name
                  (VFunRec (name, VFun (pat, expr, fun_env))))
               res)
-       | _ -> fail Unreachable)
+       | _ -> fail TypeError)
     | EMatch (expr_match, cases) ->
       let* val_match = eval expr_match env in
       let rec eval_match = function
@@ -228,11 +227,7 @@ end = struct
           run
             (bind_fun_params ~env (pat, val_match))
             ~ok:(fun binds -> eval expr (add_binds env binds))
-            ~err:(fun error ->
-              match error with
-              | UnboundConstructor _ | InadmissibilityOfActivePattern | UnexpectedWildcard
-                -> fail @@ error
-              | _ -> eval_match cases)
+            ~err:(fun _ -> eval_match cases)
         | [] -> fail MatchFailure
       in
       eval_match cases
@@ -246,9 +241,9 @@ end = struct
        | _, arg :: [] ->
          let* arg_val = eval arg env in
          (match arg_val with
-          | VAPatternRes _ -> fail InadmissibilityOfActivePattern
+          | VAPatternRes _ -> fail TypeError
           | _ -> return @@ constr_vapat_res constr_id (Some arg_val))
-       | _ -> fail InadmissibilityOfActivePattern)
+       | _ -> fail TypeError)
     | ELet (is_rec, bind_name, body) ->
       if is_rec
       then (
@@ -287,7 +282,7 @@ end = struct
       | _ -> fail MatchFailure
     in
     function
-    | _, VAPatternRes _ -> fail InadmissibilityOfActivePattern
+    | _, VAPatternRes _ -> fail MatchFailure
     | PWild, _ -> return []
     | PConst c, app_arg ->
       (match c, app_arg with
@@ -295,7 +290,7 @@ end = struct
        | CInt i1, VInt i2 when i1 = i2 -> return []
        | CString s1, VString s2 when String.equal s1 s2 -> return []
        | CNil, VNil | CUnit, VUnit -> return []
-       | _ -> fail Unreachable)
+       | _ -> fail MatchFailure)
     | PVar var, app_arg -> return [ var, app_arg ]
     | PCons (p1, p2), VList vl ->
       (match p2, p1 with
@@ -321,7 +316,7 @@ end = struct
       (match acase_id, acase_args, value_to_match with
        | "Some", acase_arg :: [], VSome v -> bind_fun_params ~env (acase_arg, v)
        | "None", [], VNone -> return []
-       | _, _, VAPatternRes _ -> fail InadmissibilityOfActivePattern
+       | _, _, VAPatternRes _ -> fail MatchFailure
        | "None", [], _ | "Some", _ :: [], _ -> fail MatchFailure
        | _ ->
          let* apat = find_val env acase_id in
@@ -338,7 +333,7 @@ end = struct
                      return @@ constr eval_list
                    in
                    function
-                   | PWild -> fail UnexpectedWildcard
+                   | PWild -> fail MatchFailure
                    | PACase (id, pats) ->
                      (match id, pats with
                       | "None", [] -> return constr_vnone
@@ -347,7 +342,7 @@ end = struct
                         (match convert_arg with
                          | VNone -> return constr_vnone
                          | _ -> return @@ constr_vsome convert_arg)
-                      | _ -> fail InadmissibilityOfActivePattern)
+                      | _ -> fail MatchFailure)
                    | PConst c -> eval (EConst c) env
                    | PVar id -> eval (EVar id) env
                    | PTuple tpat -> convert_list_of_pat tpat constr_vtuple
@@ -359,12 +354,12 @@ end = struct
                         let* rcons = convert_from_pat_to_val pat2 in
                         (match rcons with
                          | VList l -> return @@ constr_vlist (lcons :: l)
-                         | _ -> fail Unreachable)
+                         | _ -> fail MatchFailure)
                       | PConst CNil ->
                         (match lcons with
                          | VNil -> return @@ constr_vlist []
                          | VList _ -> return lcons
-                         | _ -> fail Unreachable)
+                         | _ -> fail MatchFailure)
                       | _ -> fail Unreachable)
                  in
                  let bind_result_apat res =
@@ -387,8 +382,8 @@ end = struct
                         when String.equal aconstr_id acase_id -> bind_fun_params (res, v)
                       | _, false, _ -> bind_fun_params (res, res_apat)
                       | VSome v, true, _ -> bind_fun_params (res, v)
-                      | _ -> fail Unreachable)
-                   | _ -> fail Unreachable
+                      | _ -> fail MatchFailure)
+                   | _ -> fail MatchFailure
                  in
                  let apply_arg arg other_args =
                    match func with
@@ -399,7 +394,7 @@ end = struct
                        eval apat_expr (add_binds (add_binds empty apat_env) bind_arg)
                      in
                      apply_fun_apat other_args eval_new_func_apat
-                   | _ -> fail Unreachable
+                   | _ -> fail MatchFailure
                  in
                  match args with
                  | [] -> bind_result_apat (PConst CUnit)
@@ -407,12 +402,7 @@ end = struct
                    run
                      (apply_arg h [])
                      ~ok:(fun res -> return res)
-                     ~err:(fun error ->
-                       match error with
-                       | UnboundConstructor _
-                       | InadmissibilityOfActivePattern
-                       | UnexpectedWildcard -> fail @@ error
-                       | _ -> bind_result_apat h)
+                     ~err:(fun _ -> bind_result_apat h)
                  | h :: tl -> apply_arg h tl
                in
                apply_fun_apat acase_args (VFun (apat_arg, apat_expr, apat_env))
@@ -433,7 +423,7 @@ end = struct
                       | Some v, res :: [] -> bind_fun_params (res, v)
                       | None, res :: [] -> bind_fun_params (res, VUnit)
                       | None, _ -> return []
-                      | _ -> fail Unreachable)
+                      | _ -> fail MatchFailure)
                    | _ -> fail MatchFailure)
                 | _ -> fail Unreachable))
           | _ -> fail Unreachable))
@@ -770,21 +760,6 @@ let%test _ =
 ;;
 
 let test =
-  [ EMatch
-      ( EConst (CInt 2)
-      , [ PACase ("Even", []), EConst (CString "even")
-        ; PACase ("Odd", []), EConst (CString "odd")
-        ] )
-  ]
-;;
-
-let%test _ =
-  match eval_program test with
-  | Error (UnboundConstructor "Even") -> true
-  | _ -> false
-;;
-
-let test =
   [ EBinOp
       ( Gre
       , EAPattern
@@ -798,33 +773,6 @@ let test =
 let%test _ =
   match eval_program test with
   | Error FunctionCompare -> true
-  | _ -> false
-;;
-
-let test =
-  [ EMatch
-      ( EAPattern ("Even", [ EConst (CInt 1) ])
-      , [ PACase ("Even", []), EConst (CInt 0); PACase ("Odd", []), EConst (CInt 1) ] )
-  ]
-;;
-
-let%test _ =
-  match eval_program test with
-  | Error InadmissibilityOfActivePattern -> true
-  | _ -> false
-;;
-
-let test =
-  test_apat_with_args_opt
-  @ [ EMatch
-        ( EConst (CInt 2)
-        , [ PACase ("Foo", [ PWild ]), EConst (CInt 0); PWild, EConst (CInt 1) ] )
-    ]
-;;
-
-let%test _ =
-  match eval_program test with
-  | Error UnexpectedWildcard -> true
   | _ -> false
 ;;
 
